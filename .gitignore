@@ -1,0 +1,7 @@
+build/*
+.vscode/*
+.devcontainer/*
+.devcontainer/Dockerfile
+CMakeLists.txt
+sdkconfig
+sdkconfig.old
