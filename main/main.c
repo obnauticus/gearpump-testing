@@ -13,6 +13,7 @@
 #include "mcp4725.h"
 #include "ads1115.h"
 #include "console_commands.h"
+#include "rpm.h"
 
 #define CONSOLE_UART_NUM UART_NUM_0
 
@@ -36,6 +37,9 @@ void app_main() {
 
     // Run I2C Scanner
     i2c_scanner();
+
+    // Initialize RPM sensor
+    rpm_init();
 
     // Initialize UART for console and logging
     ESP_LOGI(TAG, "Initializing UART for console and logging");
