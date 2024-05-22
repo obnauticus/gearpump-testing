@@ -1,0 +1,26 @@
+#ifndef ADS1115_H
+#define ADS1115_H
+
+#include <stdint.h>
+
+#define ADS1115_ADDR 0x48  /* I2C address of the ADS1115 */
+
+// ADS1115 register addresses
+#define ADS1115_REG_CONVERSION 0x00
+#define ADS1115_REG_CONFIG     0x01
+
+// ADS1115 config bits
+#define ADS1115_CONFIG_OS_SINGLE    0x8000
+#define ADS1115_CONFIG_MUX_SINGLE_0 0x4000
+#define ADS1115_CONFIG_MUX_SINGLE_1 0x5000
+#define ADS1115_CONFIG_MUX_SINGLE_2 0x6000
+#define ADS1115_CONFIG_MUX_SINGLE_3 0x7000
+#define ADS1115_CONFIG_GAIN_ONE     0x0200
+#define ADS1115_CONFIG_MODE_SINGLE  0x0100
+#define ADS1115_CONFIG_DR_1600SPS   0x0080
+#define ADS1115_CONFIG_COMP_QUE_DIS 0x0003
+
+void ads1115_init();
+uint16_t ads1115_read_adc(uint8_t channel);
+
+#endif // ADS1115_H

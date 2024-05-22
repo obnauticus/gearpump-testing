@@ -1,8 +1,6 @@
 #include <stdio.h>
-#include <string.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <driver/i2c.h>
 #include <driver/uart.h>
 #include <esp_log.h>
 #include <esp_vfs_dev.h>
@@ -11,98 +9,14 @@
 #include <linenoise/linenoise.h>
 #include <argtable3/argtable3.h>
 
-#define I2C_MASTER_SCL_IO 6       /* GPIO number for I2C master clock */
-#define I2C_MASTER_SDA_IO 7       /* GPIO number for I2C master data  */
-#define I2C_MASTER_FREQ_HZ 100000  /* I2C master clock frequency */
-#define I2C_MASTER_NUM I2C_NUM_0   /* I2C master i2c port number */
-#define MCP4725_ADDR 0x62
-          /* MCP4725 device address */
+#include "i2c_master.h"
+#include "mcp4725.h"
+#include "ads1115.h"
+#include "console_commands.h"
 
 #define CONSOLE_UART_NUM UART_NUM_0
 
-static const char *TAG = "MCP4725";
-
-void i2c_master_init() {
-    int i2c_master_port = I2C_MASTER_NUM;
-    i2c_config_t conf = {
-        .mode = I2C_MODE_MASTER,
-        .sda_io_num = I2C_MASTER_SDA_IO,
-        .sda_pullup_en = GPIO_PULLUP_DISABLE,
-        .scl_io_num = I2C_MASTER_SCL_IO,
-        .scl_pullup_en = GPIO_PULLUP_DISABLE,
-        .master.clk_speed = I2C_MASTER_FREQ_HZ,
-    };
-    ESP_ERROR_CHECK(i2c_param_config(i2c_master_port, &conf));
-    ESP_ERROR_CHECK(i2c_driver_install(i2c_master_port, conf.mode, 0, 0, 0));
-    ESP_LOGI(TAG, "I2C initialized successfully");
-}
-
-void i2c_scanner() {
-    printf("Scanning I2C bus...\n");
-    for (uint8_t addr = 1; addr < 127; addr++) {
-        i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-        i2c_master_start(cmd);
-        i2c_master_write_byte(cmd, (addr << 1) | I2C_MASTER_WRITE, true);
-        i2c_master_stop(cmd);
-        esp_err_t ret = i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, 1000 / portTICK_PERIOD_MS);
-        i2c_cmd_link_delete(cmd);
-        if (ret == ESP_OK) {
-            printf("Found device at address 0x%02X\n", addr);
-        }
-    }
-    printf("I2C scan done.\n");
-}
-
-
-void mcp4725_write_dac(uint16_t value) {
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    ESP_ERROR_CHECK(i2c_master_start(cmd));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (MCP4725_ADDR << 1) | I2C_MASTER_WRITE, true));
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, (value >> 8) & 0x0F, true)); // Upper data bits and control bits
-    ESP_ERROR_CHECK(i2c_master_write_byte(cmd, value & 0xFF, true));        // Lower data bits
-    ESP_ERROR_CHECK(i2c_master_stop(cmd));
-    esp_err_t ret = i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, 1000 / portTICK_PERIOD_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "DAC output set to %d", value);
-    } else {
-        ESP_LOGE(TAG, "Failed to write to DAC: %s", esp_err_to_name(ret));
-    }
-}
-
-static struct {
-    struct arg_int *value;
-    struct arg_end *end;
-} set_dac_args;
-
-int set_dac_value(int argc, char **argv) {
-    int nerrors = arg_parse(argc, argv, (void **)&set_dac_args);
-    if (nerrors != 0) {
-        arg_print_errors(stderr, set_dac_args.end, argv[0]);
-        return 1;
-    }
-    int value = set_dac_args.value->ival[0];
-    if (value < 0 || value > 4095) {
-        printf("Error: DAC value must be between 0 and 4095\n");
-        return 1;
-    }
-    mcp4725_write_dac(value);
-    return 0;
-}
-
-void register_set_dac() {
-    set_dac_args.value = arg_int1(NULL, NULL, "<value>", "DAC value (0-4095)");
-    set_dac_args.end = arg_end(2);
-    const esp_console_cmd_t cmd = {
-        .command = "set_dac",
-        .help = "Set the DAC value",
-        .hint = NULL,
-        .func = &set_dac_value,
-        .argtable = &set_dac_args
-    };
-    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
-    ESP_LOGI(TAG, "set_dac command registered successfully");
-}
+static const char *TAG = "Main";
 
 void app_main() {
     // Initialize NVS
@@ -116,6 +30,9 @@ void app_main() {
 
     // Initialize I2C
     i2c_master_init();
+
+    // Initialize ADS1115
+    ads1115_init();
 
     // Run I2C Scanner
     i2c_scanner();
@@ -147,6 +64,7 @@ void app_main() {
 
     // Register commands
     register_set_dac();
+    register_get_ads1115();
 
     const char* prompt = LOG_COLOR_I "ESPizza> " LOG_RESET_COLOR;
 
