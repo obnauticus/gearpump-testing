@@ -2,8 +2,11 @@
 #include <argtable3/argtable3.h>
 #include <esp_console.h>
 #include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include "mcp4725.h"
 #include "ads1115.h"
+#include "rpm.h"
 
 static const char *TAG = "ConsoleCommands";
 
@@ -74,4 +77,55 @@ void register_get_ads1115() {
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
     ESP_LOGI(TAG, "get_ads1115 command registered successfully");
+}
+
+static struct {
+    struct arg_end *end;
+} loop_dac_args;
+
+int loop_dac(int argc, char **argv) {
+    int nerrors = arg_parse(argc, argv, (void **)&loop_dac_args);
+    if (nerrors != 0) {
+        arg_print_errors(stderr, loop_dac_args.end, argv[0]);
+        return 1;
+    }
+
+    const int start_value = 0;
+    const int end_value = 4095;
+    const int steps = end_value - start_value + 1;
+    const int total_duration_ms = 1000;  // 1 second
+    const int delay_per_step_ms = total_duration_ms / steps;
+
+    for (int value = start_value; value <= end_value; value++) {
+        mcp4725_write_dac(value);
+        vTaskDelay(pdMS_TO_TICKS(delay_per_step_ms));
+    }
+
+    ESP_LOGI(TAG, "Completed looping over DAC values from %d to %d in %d ms", start_value, end_value, total_duration_ms);
+    return 0;
+}
+
+
+void register_loop_dac() {
+    loop_dac_args.end = arg_end(1);
+    const esp_console_cmd_t cmd = {
+        .command = "loop_dac",
+        .help = "Loop over DAC values from 0 to 4095 in one second",
+        .hint = NULL,
+        .func = &loop_dac,
+        .argtable = &loop_dac_args
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+    ESP_LOGI(TAG, "loop_dac command registered successfully");
+}
+
+void register_get_rpm() {
+    const esp_console_cmd_t cmd = {
+        .command = "get_rpm",
+        .help = "Get the current RPM value",
+        .hint = NULL,
+        .func = &get_rpm_command,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
+    ESP_LOGI("ConsoleCommands", "get_rpm command registered successfully");
 }

@@ -14,9 +14,10 @@ void mcp4725_write_dac(uint16_t value) {
     ESP_ERROR_CHECK(i2c_master_stop(cmd));
     esp_err_t ret = i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, 1000 / portTICK_PERIOD_MS);
     i2c_cmd_link_delete(cmd);
-    if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "DAC output set to %d", value);
-    } else {
+    if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to write to DAC: %s", esp_err_to_name(ret));
     }
+    /*} else {
+        ESP_LOGE(TAG, "Failed to write to DAC: %s", esp_err_to_name(ret));
+    }*/
 }
