@@ -41,9 +41,6 @@ void app_main() {
     // Initialize RPM sensor
     rpm_init();
 
-    // Create RPM task
-    xTaskCreate(rpm_task, "rpm_task", 2048, NULL, 5, NULL);
-
     // Initialize UART for console and logging
     ESP_LOGI(TAG, "Initializing UART for console and logging");
     const uart_config_t uart_config = {

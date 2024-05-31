@@ -3,82 +3,82 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
+#include <driver/pulse_cnt.h>
 #include <esp_log.h>
 #include <sys/time.h>
 #include <esp_console.h>
+#include <esp_timer.h>
 
-static const char *TAG = "RPM_Task";
+static const char *TAG = "RPM";
 
-volatile uint32_t rpm_count = 0;
-volatile uint32_t rpm_value = 0; // Global variable to store RPM value
-SemaphoreHandle_t rpm_semaphore = NULL;
-struct timeval last_time;
+volatile uint32_t rpm_value = 0;
+int64_t last_time_us = 0;
 
-static void IRAM_ATTR rpm_isr_handler(void* arg) {
-    rpm_count++;
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xSemaphoreGiveFromISR(rpm_semaphore, &xHigherPriorityTaskWoken);
-    if (xHigherPriorityTaskWoken) {
-        portYIELD_FROM_ISR();
-    }
-}
+// PCNT unit and channel
+#define PCNT_UNIT PCNT_UNIT_0
+#define PCNT_INPUT_SIG_IO RPM_INPUT_GPIO  // Pulse Input GPIO
+#define PCNT_H_LIM_VAL 32767
+#define PCNT_L_LIM_VAL -32768
+
+pcnt_unit_handle_t pcnt_unit;
+pcnt_channel_handle_t pcnt_channel;
 
 void rpm_init() {
-    rpm_semaphore = xSemaphoreCreateBinary();
-    if (rpm_semaphore == NULL) {
-        ESP_LOGE(TAG, "Failed to create semaphore");
+    // PCNT unit configuration
+    pcnt_unit_config_t unit_config = {
+        .high_limit = PCNT_H_LIM_VAL,
+        .low_limit = PCNT_L_LIM_VAL,
+    };
+
+    // Create a new PCNT unit
+    esp_err_t err = pcnt_new_unit(&unit_config, &pcnt_unit);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create PCNT unit: %s", esp_err_to_name(err));
         return;
     }
 
-    gpio_config_t io_conf = {
-        .intr_type = GPIO_INTR_POSEDGE, // Trigger on rising edge
-        .mode = GPIO_MODE_INPUT,
-        .pin_bit_mask = (1ULL << RPM_INPUT_GPIO),
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
+    // PCNT channel configuration
+    pcnt_chan_config_t chan_config = {
+        .edge_gpio_num = PCNT_INPUT_SIG_IO,
+        .level_gpio_num = -1,  // Not used
     };
-    gpio_config(&io_conf);
 
-    gpio_install_isr_service(ESP_INTR_FLAG_LEVEL3); // Use a valid interrupt flag
-    gpio_isr_handler_add(RPM_INPUT_GPIO, rpm_isr_handler, NULL);
+    // Create a new PCNT channel
+    err = pcnt_new_channel(pcnt_unit, &chan_config, &pcnt_channel);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create PCNT channel: %s", esp_err_to_name(err));
+        return;
+    }
+
+    // Set PCNT channel actions
+    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(pcnt_channel, PCNT_CHANNEL_EDGE_ACTION_INCREASE, PCNT_CHANNEL_EDGE_ACTION_HOLD));
+    ESP_ERROR_CHECK(pcnt_channel_set_level_action(pcnt_channel, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_KEEP));
+
+    // Enable the PCNT unit
+    ESP_ERROR_CHECK(pcnt_unit_enable(pcnt_unit));
+
+    // Clear the PCNT unit counter
+    ESP_ERROR_CHECK(pcnt_unit_clear_count(pcnt_unit));
+
+    // Start the PCNT unit
+    ESP_ERROR_CHECK(pcnt_unit_start(pcnt_unit));
+
     ESP_LOGI(TAG, "RPM sensor initialized successfully");
 
-    // Initialize the last_time variable
-    gettimeofday(&last_time, NULL);
+    last_time_us = esp_timer_get_time();
 }
 
 uint32_t get_rpm() {
-    struct timeval current_time;
-    gettimeofday(&current_time, NULL);
+    int64_t current_time_us = esp_timer_get_time();
+    float elapsed_time_sec = (current_time_us - last_time_us) / 1000000.0f;
 
-    // Calculate elapsed time in seconds
-    float elapsed_time = (current_time.tv_sec - last_time.tv_sec) +
-                         (current_time.tv_usec - last_time.tv_usec) / 1000000.0f;
+    last_time_us = current_time_us;
 
-    // Save the current time for the next calculation
-    last_time = current_time;
+    int count;
+    ESP_ERROR_CHECK(pcnt_unit_get_count(pcnt_unit, &count));
+    ESP_ERROR_CHECK(pcnt_unit_clear_count(pcnt_unit));
 
-    // Read and reset the counter
-    uint32_t count = rpm_count;
-    rpm_count = 0;
-
-    // Calculate RPM: RPM = (count / elapsed_time) * 60 / pulses_per_rev
-    // Assuming 32 pulses per revolution
-    float rpm = (count / elapsed_time) * 60.0f / 32.0f;
+    float rpm = (count / elapsed_time_sec) * 60.0f / 32.0f;
 
     return (uint32_t)rpm;
-}
-
-int get_rpm_command(int argc, char **argv) {
-    ESP_LOGI(TAG, "Current RPM: %" PRIu32, rpm_value);
-    printf("Current RPM: %" PRIu32 "\n", rpm_value);
-    return 0;
-}
-
-void rpm_task(void *arg) {
-    while (1) {
-        if (xSemaphoreTake(rpm_semaphore, portMAX_DELAY) == pdTRUE) {
-            rpm_value = get_rpm();
-        }
-    }
 }

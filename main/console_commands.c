@@ -105,7 +105,6 @@ int loop_dac(int argc, char **argv) {
     return 0;
 }
 
-
 void register_loop_dac() {
     loop_dac_args.end = arg_end(1);
     const esp_console_cmd_t cmd = {
@@ -119,13 +118,21 @@ void register_loop_dac() {
     ESP_LOGI(TAG, "loop_dac command registered successfully");
 }
 
+int get_rpm_command(int argc, char **argv) {
+    uint32_t rpm_value = get_rpm();
+    ESP_LOGI(TAG, "Current RPM: %" PRIu32, rpm_value);
+    printf("Current RPM: %" PRIu32 "\n", rpm_value);
+    return 0;
+}
+
 void register_get_rpm() {
     const esp_console_cmd_t cmd = {
         .command = "get_rpm",
         .help = "Get the current RPM value",
         .hint = NULL,
         .func = &get_rpm_command,
+        .argtable = NULL
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&cmd));
-    ESP_LOGI("ConsoleCommands", "get_rpm command registered successfully");
+    ESP_LOGI(TAG, "get_rpm command registered successfully");
 }
