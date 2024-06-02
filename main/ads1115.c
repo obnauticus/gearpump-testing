@@ -11,7 +11,7 @@ void ads1115_init() {
                       ADS1115_CONFIG_MUX_SINGLE_0 |
                       ADS1115_CONFIG_GAIN_ONE     |
                       ADS1115_CONFIG_MODE_SINGLE  |
-                      ADS1115_CONFIG_DR_1600SPS   |
+                      ADS1115_CONFIG_DR_128SPS   |
                       ADS1115_CONFIG_COMP_QUE_DIS;
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
@@ -29,7 +29,7 @@ uint16_t ads1115_read_adc(uint8_t channel) {
     uint16_t config = ADS1115_CONFIG_OS_SINGLE    |
                       ADS1115_CONFIG_GAIN_ONE     |
                       ADS1115_CONFIG_MODE_SINGLE  |
-                      ADS1115_CONFIG_DR_1600SPS   |
+                      ADS1115_CONFIG_DR_128SPS   |
                       ADS1115_CONFIG_COMP_QUE_DIS;
 
     switch (channel) {
